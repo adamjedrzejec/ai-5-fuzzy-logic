@@ -4,6 +4,7 @@ import pygame
 from typing import Type
 import skfuzzy as fuzz
 import skfuzzy.control as fuzzcontrol
+import numpy as np
 
 FPS = 30
 
@@ -224,22 +225,43 @@ class HumanPlayer(Player):
 class FuzzyPlayer(Player):
     def __init__(self, racket: Racket, ball: Ball, board: Board):
         super(FuzzyPlayer, self).__init__(racket, ball, board)
-        # x_dist = fuzz.control.Antecedent...
+        boardWidth = board.surface.get_width()
+
+        x_dist = fuzz.control.Antecedent(np.arange(-boardWidth, boardWidth, 1), 'x_dist')
+        x_dist['left'] = fuzz.trapmf(x_dist.universe, [-boardWidth , -boardWidth, -racket.rect.width / 4, 0])
+        x_dist['center'] = fuzz.trapmf(x_dist.universe, [-racket.rect.width / 4 , -racket.rect.width / 8, racket.rect.width / 8, racket.rect.width / 4])
+        x_dist['right'] = fuzz.trapmf(x_dist.universe, [0, racket.rect.width / 4, boardWidth , boardWidth])
+        # x_dist.view()
+        
         # y_dist = fuzz.control.Antecedent...
-        # speed = fuzz.control.Consequent...
-        # racket_controller = fuzz.control.ControlSystem...
+        speed = fuzz.control.Consequent(np.arange(-20, 20, 1), 'speed')
+        speed['left'] = fuzz.trapmf(speed.universe, [-20, -20, -6, -5])
+        speed['stop'] = fuzz.trimf(speed.universe, [-1, 0, 1])
+        speed['right'] = fuzz.trapmf(speed.universe, [5, 6, 20, 20])
+
+        rules = []
+        rules.append(fuzz.control.Rule(x_dist['left'], speed['right']))
+        rules.append(fuzz.control.Rule(x_dist['center'], speed['stop']))
+        rules.append(fuzz.control.Rule(x_dist['right'], speed['left']))
+
+        self.racket_controller = fuzz.control.ControlSystem(rules)
 
     def act(self, x_diff: int, y_diff: int):
+        print(x_diff)
         velocity = self.make_decision(x_diff, y_diff)
-        self.move(self.racket.rect.center + velocity)
+        self.move(self.racket.rect.left + velocity)
 
     def make_decision(self, x_diff: int, y_diff: int):
-        # racket_controller.compute()
+        # self.racket_controller.in
+        driver = fuzz.control.ControlSystemSimulation(self.racket_controller)
+        driver.input['x_dist'] = x_diff
+        driver.compute()
+        print(driver.output['speed'])
         # ...
-        return 0
+        return driver.output['speed']
 
 
 if __name__ == "__main__":
-    game = PongGame(800, 400, NaiveOponent, HumanPlayer)
-    # game = PongGame(800, 400, NaiveOponent, FuzzyPlayer)
+    # game = PongGame(800, 400, NaiveOponent, HumanPlayer)
+    game = PongGame(800, 400, NaiveOponent, FuzzyPlayer)
     game.run()
